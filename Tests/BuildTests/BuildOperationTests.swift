@@ -47,7 +47,8 @@ private func mockBuildOperation(
         outputStream: BufferedOutputByteStream(),
         logLevel: .info,
         fileSystem: fs,
-        observabilityScope: observabilityScope
+        observabilityScope: observabilityScope,
+        progressAnimationConfiguration: .init()
     )
 }
 

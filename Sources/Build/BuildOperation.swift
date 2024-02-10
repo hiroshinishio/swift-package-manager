@@ -111,6 +111,8 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
     /// Map of  root package identities by target names which are declared in them.
     private let rootPackageIdentityByTargetName: [String: PackageIdentity]
 
+    private let progressAnimationConfiguration: Basics.ProgressAnimationConfiguration
+
     public convenience init(
         productsBuildParameters: BuildParameters,
         toolsBuildParameters: BuildParameters,
@@ -125,7 +127,8 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
         outputStream: OutputByteStream,
         logLevel: Basics.Diagnostic.Severity,
         fileSystem: Basics.FileSystem,
-        observabilityScope: ObservabilityScope
+        observabilityScope: ObservabilityScope,
+        progressAnimationConfiguration: Basics.ProgressAnimationConfiguration
     ) {
         self.init(
             productsBuildParameters: productsBuildParameters,
@@ -142,7 +145,8 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
             outputStream: outputStream,
             logLevel: logLevel,
             fileSystem: fileSystem,
-            observabilityScope: observabilityScope
+            observabilityScope: observabilityScope,
+            progressAnimationConfiguration: progressAnimationConfiguration
         )
     }
 
@@ -161,7 +165,8 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
         outputStream: OutputByteStream,
         logLevel: Basics.Diagnostic.Severity,
         fileSystem: Basics.FileSystem,
-        observabilityScope: ObservabilityScope
+        observabilityScope: ObservabilityScope,
+        progressAnimationConfiguration: Basics.ProgressAnimationConfiguration
     ) {
         /// Checks if stdout stream is tty.
         var productsBuildParameters = productsBuildParameters
@@ -185,6 +190,7 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
         self.logLevel = logLevel
         self.fileSystem = fileSystem
         self.observabilityScope = observabilityScope.makeChildScope(description: "Build Operation")
+        self.progressAnimationConfiguration = progressAnimationConfiguration
     }
 
     public func getPackageGraph() throws -> ModulesGraph {
@@ -410,8 +416,9 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
             return
         }
 
-        // delegate is only available after createBuildSystem is called
-        progressTracker.buildStart(configuration: self.productsBuildParameters.configuration)
+        progressTracker.buildStart(
+            configuration: self.productsBuildParameters.configuration,
+            action: "Building")
 
         // Perform the build.
         let llbuildTarget = try computeLLBuildTargetName(for: subset)
@@ -434,6 +441,7 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
         progressTracker.buildComplete(
             success: success,
             duration: duration,
+            action: "Building",
             subsetDescriptor: subsetDescriptor
         )
         guard success else { throw Diagnostics.fatalError }
@@ -667,7 +675,8 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
                 outputStream: self.outputStream,
                 logLevel: self.logLevel,
                 fileSystem: self.fileSystem,
-                observabilityScope: self.observabilityScope
+                observabilityScope: self.observabilityScope,
+                progressAnimationConfiguration: self.progressAnimationConfiguration
             )
 
             buildToolPluginInvocationResults = try graph.invokeBuildToolPlugins(
@@ -800,8 +809,23 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
         )
         self.current = (buildSystem, tracker)
 
-        // Build the package structure target which will re-generate the llbuild manifest, if necessary.
-        return buildSystem.build(target: "PackageStructure")
+        tracker.buildStart(
+            configuration: self.productsBuildParameters.configuration,
+            action: "Planning")
+
+        // Build the package structure target which will re-generate the llbuild
+        // manifest, if necessary.
+        let buildStartTime = DispatchTime.now()
+        let success = buildSystem.build(target: "PackageStructure")
+        let duration = buildStartTime.distance(to: .now())
+
+        tracker.buildComplete(
+            success: success,
+            duration: duration,
+            action: "Planning",
+            subsetDescriptor: nil)
+
+        return success
     }
 
     /// Create the build system using the given build description.
@@ -812,10 +836,13 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
         buildDescription: BuildDescription?
     ) throws -> (buildSystem: SPMLLBuild.BuildSystem, tracker: LLBuildProgressTracker) {
         // Figure out which progress bar we have to use during the build.
-        let progressAnimation = ProgressAnimation.ninja(
+        let progressAnimation = ProgressAnimation.make(
+            configuration: self.progressAnimationConfiguration,
+            environment: .current,
             stream: self.outputStream,
-            verbose: self.logLevel.isVerbose
-        )
+            verbose: self.logLevel.isVerbose,
+            header: "Building...")
+
         let buildExecutionContext = BuildExecutionContext(
             productsBuildParameters: self.productsBuildParameters,
             toolsBuildParameters: self.toolsBuildParameters,

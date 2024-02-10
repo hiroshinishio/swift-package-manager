@@ -29,6 +29,7 @@ import XCBuildSupport
 import struct TSCBasic.KeyedPair
 import func TSCBasic.topologicalSort
 import var TSCBasic.stdoutStream
+import enum TSCBasic.ProcessEnv
 
 import enum TSCUtility.Diagnostics
 import struct TSCUtility.Version
@@ -333,7 +334,8 @@ struct SwiftBootstrapBuildTool: ParsableCommand {
                     outputStream: TSCBasic.stdoutStream,
                     logLevel: logLevel,
                     fileSystem: self.fileSystem,
-                    observabilityScope: self.observabilityScope
+                    observabilityScope: self.observabilityScope,
+                    progressAnimationConfiguration: .init()
                 )
             case .xcode:
                 return try XcodeBuildSystem(

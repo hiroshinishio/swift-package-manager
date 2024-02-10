@@ -137,12 +137,12 @@ public protocol PackageStructureDelegate {
 /// Convenient llbuild build system delegate implementation
 final class LLBuildProgressTracker: LLBuildBuildSystemDelegate, SwiftCompilerOutputParserDelegate {
     private let outputStream: ThreadSafeOutputByteStream
-    private let progressAnimation: ProgressAnimationProtocol
+    private let progressAnimation: ProgressAnimationProtocol2
     private let logLevel: Basics.Diagnostic.Severity
     private weak var delegate: SPMBuildCore.BuildSystemDelegate?
     private let buildSystem: SPMBuildCore.BuildSystem
     private let queue = DispatchQueue(label: "org.swift.swiftpm.build-delegate")
-    private var taskTracker = CommandTaskTracker()
+    private var taskTracker: CommandTaskTracker
     private var errorMessagesByTarget: [String: [String]] = [:]
     private let observabilityScope: ObservabilityScope
     private var cancelled: Bool = false
@@ -160,7 +160,7 @@ final class LLBuildProgressTracker: LLBuildBuildSystemDelegate, SwiftCompilerOut
         buildSystem: SPMBuildCore.BuildSystem,
         buildExecutionContext: BuildExecutionContext,
         outputStream: OutputByteStream,
-        progressAnimation: ProgressAnimationProtocol,
+        progressAnimation: ProgressAnimationProtocol2,
         logLevel: Basics.Diagnostic.Severity,
         observabilityScope: ObservabilityScope,
         delegate: SPMBuildCore.BuildSystemDelegate?
@@ -171,6 +171,7 @@ final class LLBuildProgressTracker: LLBuildBuildSystemDelegate, SwiftCompilerOut
         // https://forums.swift.org/t/allow-self-x-in-class-convenience-initializers/15924
         self.outputStream = outputStream as? ThreadSafeOutputByteStream ?? ThreadSafeOutputByteStream(outputStream)
         self.progressAnimation = progressAnimation
+        self.taskTracker = .init(progressAnimation: progressAnimation)
         self.logLevel = logLevel
         self.observabilityScope = observabilityScope
         self.delegate = delegate
@@ -179,12 +180,6 @@ final class LLBuildProgressTracker: LLBuildBuildSystemDelegate, SwiftCompilerOut
             SwiftCompilerOutputParser(targetName: tool.moduleName, delegate: self)
         } ?? [:]
         self.swiftParsers = swiftParsers
-
-        self.taskTracker.onTaskProgressUpdateText = { progressText, _ in
-            self.queue.async {
-                self.delegate?.buildSystem(self.buildSystem, didUpdateTaskProgress: progressText)
-            }
-        }
     }
 
     // MARK: llbuildSwift.BuildSystemDelegate
@@ -233,13 +228,16 @@ final class LLBuildProgressTracker: LLBuildBuildSystemDelegate, SwiftCompilerOut
     }
 
     func commandStatusChanged(_ command: SPMLLBuild.Command, kind: CommandStatusKind) {
-        guard !self.logLevel.isVerbose else { return }
         guard command.shouldShowStatus else { return }
-        guard !self.swiftParsers.keys.contains(command.name) else { return }
+        let targetName = self.swiftParsers[command.name]?.targetName
+        let now = ContinuousClock.now
 
-        self.queue.async {
-            self.taskTracker.commandStatusChanged(command, kind: kind)
-            self.updateProgress()
+        queue.async {
+            self.taskTracker.commandStatusChanged(
+                command,
+                kind: kind,
+                targetName: targetName,
+                time: now)
         }
     }
 
@@ -251,13 +249,22 @@ final class LLBuildProgressTracker: LLBuildBuildSystemDelegate, SwiftCompilerOut
 
     func commandStarted(_ command: SPMLLBuild.Command) {
         guard command.shouldShowStatus else { return }
+        let targetName = self.swiftParsers[command.name]?.targetName
+        let now = ContinuousClock.now
 
         self.queue.async {
             self.delegate?.buildSystem(self.buildSystem, didStartCommand: BuildSystemCommand(command))
+
             if self.logLevel.isVerbose {
+                self.progressAnimation.clear()
                 self.outputStream.send("\(command.verboseDescription)\n")
                 self.outputStream.flush()
             }
+
+            self.taskTracker.commandStarted(
+                command,
+                targetName: targetName,
+                time: now)
         }
     }
 
@@ -267,7 +274,8 @@ final class LLBuildProgressTracker: LLBuildBuildSystemDelegate, SwiftCompilerOut
 
     func commandFinished(_ command: SPMLLBuild.Command, result: CommandResult) {
         guard command.shouldShowStatus else { return }
-        guard !self.swiftParsers.keys.contains(command.name) else { return }
+        let targetName = self.swiftParsers[command.name]?.targetName
+        let now = ContinuousClock.now
 
         self.queue.async {
             if result == .cancelled {
@@ -277,11 +285,7 @@ final class LLBuildProgressTracker: LLBuildBuildSystemDelegate, SwiftCompilerOut
 
             self.delegate?.buildSystem(self.buildSystem, didFinishCommand: BuildSystemCommand(command))
 
-            if !self.logLevel.isVerbose {
-                let targetName = self.swiftParsers[command.name]?.targetName
-                self.taskTracker.commandFinished(command, result: result, targetName: targetName)
-                self.updateProgress()
-            }
+            self.taskTracker.commandFinished(command, result: result, targetName: targetName, time: now)
         }
     }
 
@@ -387,9 +391,9 @@ final class LLBuildProgressTracker: LLBuildBuildSystemDelegate, SwiftCompilerOut
 
     /// Invoked right before running an action taken before building.
     func preparationStepStarted(_ name: String) {
+        let now = ContinuousClock.now
         self.queue.async {
-            self.taskTracker.buildPreparationStepStarted(name)
-            self.updateProgress()
+            self.taskTracker.buildPreparationStepStarted(name, time: now)
         }
     }
 
@@ -397,8 +401,8 @@ final class LLBuildProgressTracker: LLBuildBuildSystemDelegate, SwiftCompilerOut
     /// when verboseOnly is set to true, the output will only be printed in verbose logging mode
     func preparationStepHadOutput(_ name: String, output: String, verboseOnly: Bool) {
         self.queue.async {
-            self.progressAnimation.clear()
             if !verboseOnly || self.logLevel.isVerbose {
+                self.progressAnimation.clear()
                 self.outputStream.send("\(output.spm_chomp())\n")
                 self.outputStream.flush()
             }
@@ -408,32 +412,24 @@ final class LLBuildProgressTracker: LLBuildBuildSystemDelegate, SwiftCompilerOut
     /// Invoked right after running an action taken before building. The result
     /// indicates whether the action succeeded, failed, or was cancelled.
     func preparationStepFinished(_ name: String, result: CommandResult) {
+        let now = ContinuousClock.now
         self.queue.async {
-            self.taskTracker.buildPreparationStepFinished(name)
-            self.updateProgress()
+            self.taskTracker.buildPreparationStepFinished(name, time: now)
         }
     }
 
     // MARK: SwiftCompilerOutputParserDelegate
-
     func swiftCompilerOutputParser(_ parser: SwiftCompilerOutputParser, didParse message: SwiftCompilerMessage) {
+        let now = ContinuousClock.now
         self.queue.async {
-            if self.logLevel.isVerbose {
-                if let text = message.verboseProgressText {
-                    self.outputStream.send("\(text)\n")
-                    self.outputStream.flush()
-                }
-            } else {
-                self.taskTracker.swiftCompilerDidOutputMessage(message, targetName: parser.targetName)
-                self.updateProgress()
+            if self.logLevel.isVerbose, let text = message.verboseProgressText {
+                self.progressAnimation.clear()
+                self.outputStream.send("\(text)\n")
+                self.outputStream.flush()
             }
 
             if let output = message.standardOutput {
-                // first we want to print the output so users have it handy
-                if !self.logLevel.isVerbose {
-                    self.progressAnimation.clear()
-                }
-
+                self.progressAnimation.clear()
                 self.outputStream.send(output)
                 self.outputStream.flush()
 
@@ -448,24 +444,36 @@ final class LLBuildProgressTracker: LLBuildBuildSystemDelegate, SwiftCompilerOut
                     }
                 }
             }
+
+            self.taskTracker.swiftCompilerDidOutputMessage(
+                message,
+                targetName: parser.targetName,
+                time: now)
         }
     }
 
     func swiftCompilerOutputParser(_ parser: SwiftCompilerOutputParser, didFailWith error: Error) {
         let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         self.observabilityScope.emit(.swiftCompilerOutputParsingError(message))
-        self.hadCommandFailure()
     }
 
-    func buildStart(configuration: BuildConfiguration) {
+    func buildStart(
+        configuration: BuildConfiguration,
+        action: String
+    ) {
         self.queue.sync {
             self.progressAnimation.clear()
-            self.outputStream.send("Building for \(configuration == .debug ? "debugging" : "production")...\n")
+            self.outputStream.send("\(action) for \(configuration == .debug ? "debugging" : "production")...\n")
             self.outputStream.flush()
         }
     }
 
-    func buildComplete(success: Bool, duration: DispatchTimeInterval, subsetDescriptor: String? = nil) {
+    func buildComplete(
+        success: Bool,
+        duration: DispatchTimeInterval,
+        action: String,
+        subsetDescriptor: String? = nil
+    ) {
         let subsetString = if let subsetDescriptor {
             "of \(subsetDescriptor) "
         } else {
@@ -473,78 +481,106 @@ final class LLBuildProgressTracker: LLBuildBuildSystemDelegate, SwiftCompilerOut
         }
 
         self.queue.sync {
-            self.progressAnimation.complete(success: success)
-            self.delegate?.buildSystem(self.buildSystem, didFinishWithResult: success)
-
+            self.progressAnimation.complete()
             if success {
-                let message = self.cancelled ? "Build \(subsetString)cancelled!" : "Build \(subsetString)complete!"
                 self.progressAnimation.clear()
-                self.outputStream.send("\(message) (\(duration.descriptionInSeconds))\n")
+                let result = self.cancelled ? "cancelled" : "complete"
+                self.outputStream.send("\(action) \(subsetString)\(result)! (\(duration.descriptionInSeconds))\n")
                 self.outputStream.flush()
             }
-        }
-    }
-
-    // MARK: Private
-
-    private func updateProgress() {
-        if let progressText = taskTracker.latestFinishedText {
-            self.progressAnimation.update(
-                step: self.taskTracker.finishedCount,
-                total: self.taskTracker.totalCount,
-                text: progressText
-            )
         }
     }
 }
 
 /// Tracks tasks based on command status and swift compiler output.
 private struct CommandTaskTracker {
-    private(set) var totalCount = 0
-    private(set) var finishedCount = 0
-    private var swiftTaskProgressTexts: [Int: String] = [:]
+    var progressAnimation: any ProgressAnimationProtocol2
+    var swiftTaskProgressTexts: [Int: String]
 
-    /// The last task text before the task list was emptied.
-    private(set) var latestFinishedText: String?
+    init(progressAnimation: ProgressAnimationProtocol2) {
+        self.progressAnimation = progressAnimation
+        self.swiftTaskProgressTexts = [:]
+    }
 
-    var onTaskProgressUpdateText: ((_ text: String, _ targetName: String?) -> Void)?
-
-    mutating func commandStatusChanged(_ command: SPMLLBuild.Command, kind: CommandStatusKind) {
+    mutating func commandStatusChanged(
+        _ command: SPMLLBuild.Command,
+        kind: CommandStatusKind,
+        targetName: String?,
+        time: ContinuousClock.Instant
+    ) {
+        let event: ProgressTaskState
         switch kind {
-        case .isScanning:
-            self.totalCount += 1
-        case .isUpToDate:
-            self.totalCount -= 1
-        case .isComplete:
-            self.finishedCount += 1
+        case .isScanning: event = .discovered
+        case .isUpToDate: event = .completed(.skipped)
+        case .isComplete: event = .completed(.succeeded)
         @unknown default:
             assertionFailure("unhandled command status kind \(kind) for command \(command)")
+            return
         }
+        let name = self.progressText(of: command, targetName: targetName)
+        self.progressAnimation.update(
+            id: command.unstableId,
+            name: name,
+            event: event,
+            at: time)
     }
 
-    mutating func commandFinished(_ command: SPMLLBuild.Command, result: CommandResult, targetName: String?) {
-        let progressTextValue = self.progressText(of: command, targetName: targetName)
-        self.onTaskProgressUpdateText?(progressTextValue, targetName)
-
-        self.latestFinishedText = progressTextValue
+    mutating func commandStarted(
+        _ command: SPMLLBuild.Command,
+        targetName: String?,
+        time: ContinuousClock.Instant
+    ) {
+        let name = self.progressText(of: command, targetName: targetName)
+        self.progressAnimation.update(
+            id: command.unstableId,
+            name: name,
+            event: .started,
+            at: time)
     }
 
-    mutating func swiftCompilerDidOutputMessage(_ message: SwiftCompilerMessage, targetName: String) {
+    mutating func commandFinished(
+        _ command: SPMLLBuild.Command,
+        result: CommandResult,
+        targetName: String?,
+        time: ContinuousClock.Instant
+    ) {
+        let name = self.progressText(of: command, targetName: targetName)
+        let event: ProgressTaskCompletion
+        switch result {
+        case .succeeded: event = .succeeded
+        case .failed: event = .failed
+        case .cancelled: event = .cancelled
+        case .skipped: event = .skipped
+        @unknown default:
+            assertionFailure("unhandled command result \(result) for command \(command)")
+            return
+        }
+        self.progressAnimation.update(
+            id: command.unstableId,
+            name: name,
+            event: .completed(event),
+            at: time)
+    }
+
+    mutating func swiftCompilerDidOutputMessage(
+        _ message: SwiftCompilerMessage,
+        targetName: String,
+        time: ContinuousClock.Instant
+    ) {
         switch message.kind {
         case .began(let info):
-            if let text = progressText(of: message, targetName: targetName) {
-                self.swiftTaskProgressTexts[info.pid] = text
-                self.onTaskProgressUpdateText?(text, targetName)
+            if let task = self.progressText(of: message, targetName: targetName) {
+                self.swiftTaskProgressTexts[info.pid] = task
+//                self.progressAnimation.update(id: info.pid, name: task, event: .discovered, at: time)
+//                self.progressAnimation.update(id: info.pid, name: task, event: .started, at: time)
             }
 
-            self.totalCount += 1
         case .finished(let info):
-            if let progressText = swiftTaskProgressTexts[info.pid] {
-                self.latestFinishedText = progressText
-                self.swiftTaskProgressTexts[info.pid] = nil
+            if let task = self.swiftTaskProgressTexts[info.pid] {
+                swiftTaskProgressTexts[info.pid] = nil
+//                self.progressAnimation.update(id: info.pid, name: task, event: .completed(.succeeded), at: time)
             }
 
-            self.finishedCount += 1
         case .unparsableOutput, .signalled, .skipped:
             break
         }
@@ -595,13 +631,31 @@ private struct CommandTaskTracker {
         return nil
     }
 
-    mutating func buildPreparationStepStarted(_: String) {
-        self.totalCount += 1
+    mutating func buildPreparationStepStarted(
+        _ name: String,
+        time: ContinuousClock.Instant
+    ) {
+        self.progressAnimation.update(
+            id: name.hash,
+            name: name,
+            event: .discovered,
+            at: time)
+        self.progressAnimation.update(
+            id: name.hash,
+            name: name,
+            event: .started,
+            at: time)
     }
 
-    mutating func buildPreparationStepFinished(_ name: String) {
-        self.latestFinishedText = name
-        self.finishedCount += 1
+    mutating func buildPreparationStepFinished(
+        _ name: String,
+        time: ContinuousClock.Instant
+    ) {
+        self.progressAnimation.update(
+            id: name.hash,
+            name: name,
+            event: .completed(.succeeded),
+            at: time)
     }
 }
 
@@ -659,5 +713,13 @@ extension BuildSystemCommand {
             description: command.description,
             verboseDescription: command.verboseDescription
         )
+    }
+}
+
+extension SPMLLBuild.Command {
+    var unstableId: Int {
+        var hasher = Hasher()
+        hasher.combine(self)
+        return hasher.finalize()
     }
 }
