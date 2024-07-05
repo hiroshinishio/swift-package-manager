@@ -25,7 +25,7 @@ public enum Concurrency {
 }
 
 // FIXME: mark as deprecated once async/await is available
-// @available(*, deprecated, message: "replace with async/await when available")
+@available(*, noasync, message: "replace with async/await when available")
 @inlinable
 public func temp_await<T, ErrorType>(_ body: (@escaping (Result<T, ErrorType>) -> Void) -> Void) throws -> T {
     try tsc_await(body)
@@ -60,7 +60,7 @@ public func unsafe_await<T>(_ body: @Sendable @escaping () async -> T) -> T {
 }
 
 // FIXME: mark as deprecated once async/await is available
-// @available(*, deprecated, message: "replace with async/await when available")
+@available(*, deprecated, message: "replace with async/await when available")
 @inlinable
 public func temp_await<T>(_ body: (@escaping (T) -> Void) -> Void) -> T {
     tsc_await(body)
