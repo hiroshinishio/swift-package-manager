@@ -66,8 +66,8 @@ public struct FileSystemPackageContainer: PackageContainer {
             metadata: package.diagnosticsMetadata)
     }
 
-    private func loadManifest() throws -> Manifest {
-        try manifest.memoize() {
+    private func loadManifest() async throws -> Manifest {
+        try await manifest.memoize() {
             let packagePath: AbsolutePath
             switch self.package.kind {
             case .root(let path), .fileSystem(let path):
@@ -78,7 +78,7 @@ public struct FileSystemPackageContainer: PackageContainer {
 
             // Load the manifest.
             // FIXME: this should not block
-            return try temp_await {
+            return try await withCheckedThrowingContinuation {
                 manifestLoader.load(
                     packagePath: packagePath,
                     packageIdentity: self.package.identity,
@@ -92,20 +92,20 @@ public struct FileSystemPackageContainer: PackageContainer {
                     observabilityScope: self.observabilityScope,
                     delegateQueue: .sharedConcurrent,
                     callbackQueue: .sharedConcurrent,
-                    completion: $0
+                    completion: $0.resume(with:)
                 )
             }
         }
     }
 
-    public func getUnversionedDependencies(productFilter: ProductFilter) throws -> [PackageContainerConstraint] {
-        let manifest = try self.loadManifest()
+    public func getUnversionedDependencies(productFilter: ProductFilter) async throws -> [PackageContainerConstraint] {
+        let manifest = try await self.loadManifest()
         return try manifest.dependencyConstraints(productFilter: productFilter)
     }
 
-    public func loadPackageReference(at boundVersion: BoundVersion) throws -> PackageReference {
+    public func loadPackageReference(at boundVersion: BoundVersion) async throws -> PackageReference {
         assert(boundVersion == .unversioned, "Unexpected bound version \(boundVersion)")
-        let manifest = try loadManifest()
+        let manifest = try await loadManifest()
         return package.withName(manifest.displayName)
     }
 

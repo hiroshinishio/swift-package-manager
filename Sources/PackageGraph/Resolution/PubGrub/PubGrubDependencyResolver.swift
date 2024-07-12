@@ -254,9 +254,10 @@ public struct PubGrubDependencyResolver {
                 updatePackage = package
             } else {
                 // TODO: replace with async/await when available
-                let container = try await withCheckedThrowingContinuation { self.provider.getContainer(for: package, completion: $0.resume(with:))
+                let container = try await withCheckedThrowingContinuation { 
+                    self.provider.getContainer(for: package, completion: $0.resume(with:))
                 }
-                updatePackage = try container.underlying.loadPackageReference(at: boundVersion)
+                updatePackage = try await container.underlying.loadPackageReference(at: boundVersion)
             }
 
             if var existing = flattenedAssignments[updatePackage] {
@@ -283,7 +284,7 @@ public struct PubGrubDependencyResolver {
             let container = try await withCheckedThrowingContinuation {
                 self.provider.getContainer(for: package, completion: $0.resume(with:))
             }
-            let updatePackage = try container.underlying.loadPackageReference(at: override.version)
+            let updatePackage = try await container.underlying.loadPackageReference(at: override.version)
             finalAssignments.append(.init(
                 package: updatePackage,
                 boundVersion: override.version,
@@ -350,7 +351,7 @@ public struct PubGrubDependencyResolver {
                 // TODO: replace with async/await when available
                 let container = try await withCheckedThrowingContinuation { self.provider.getContainer(for: node.package, completion: $0.resume(with:))
                 }
-                for dependency in try container.underlying
+                for dependency in try await container.underlying
                     .getUnversionedDependencies(productFilter: node.productFilter)
                 {
                     if let versionedBasedConstraints = VersionBasedConstraint.constraints(dependency) {
