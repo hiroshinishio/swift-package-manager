@@ -43,17 +43,17 @@ public protocol PackageContainer {
     var shouldInvalidatePinnedVersions: Bool { get }
 
     /// Returns true if the tools version is compatible at the given version.
-    func isToolsVersionCompatible(at version: Version) -> Bool
+    func isToolsVersionCompatible(at version: Version) async -> Bool
 
     /// Returns the tools version for the given version
-    func toolsVersion(for version: Version) throws -> ToolsVersion
+    func toolsVersion(for version: Version) async throws -> ToolsVersion
 
     /// Get the list of versions which are available for the package.
     ///
     /// The list will be returned in sorted order, with the latest version *first*.
     /// All versions will not be requested at once. Resolver will request the next one only
     /// if the previous one did not satisfy all constraints.
-    func toolsVersionsAppropriateVersionsDescending() throws -> [Version]
+    func toolsVersionsAppropriateVersionsDescending() async throws -> [Version]
 
     /// Get the list of versions in the repository sorted in the ascending order, that is the earliest
     /// version appears first.
@@ -74,7 +74,7 @@ public protocol PackageContainer {
     /// - Precondition: `versions.contains(version)`
     /// - Throws: If the version could not be resolved; this will abort
     ///   dependency resolution completely.
-    func getDependencies(at version: Version, productFilter: ProductFilter) throws -> [PackageContainerConstraint]
+    func getDependencies(at version: Version, productFilter: ProductFilter) async throws -> [PackageContainerConstraint]
 
     /// Fetch the declared dependencies for a particular revision.
     ///
@@ -83,7 +83,7 @@ public protocol PackageContainer {
     ///
     /// - Throws: If the revision could not be resolved; this will abort
     ///   dependency resolution completely.
-    func getDependencies(at revision: String, productFilter: ProductFilter) throws -> [PackageContainerConstraint]
+    func getDependencies(at revision: String, productFilter: ProductFilter) async throws -> [PackageContainerConstraint]
 
     /// Fetch the dependencies of an unversioned package container.
     ///

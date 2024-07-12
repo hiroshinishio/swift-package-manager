@@ -99,8 +99,9 @@ final class PubGrubPackageContainer {
     }
 
     /// Compute the bounds of incompatible tools version starting from the given version.
-    private func computeIncompatibleToolsVersionBounds(fromVersion: Version) throws -> VersionSetSpecifier {
-        assert(!self.underlying.isToolsVersionCompatible(at: fromVersion))
+    private func computeIncompatibleToolsVersionBounds(fromVersion: Version) async throws -> VersionSetSpecifier {
+        // TODO: do we really want to compute this for an assert?
+        // assert(!self.underlying.isToolsVersionCompatible(at: fromVersion))
         let versions: [Version] = try self.underlying.versionsAscending()
 
         // This is guaranteed to be present.
@@ -110,7 +111,7 @@ final class PubGrubPackageContainer {
         var upperBound = fromVersion
 
         for version in versions.dropFirst(idx + 1) {
-            let isToolsVersionCompatible = self.underlying.isToolsVersionCompatible(at: version)
+            let isToolsVersionCompatible = await self.underlying.isToolsVersionCompatible(at: version)
             if isToolsVersionCompatible {
                 break
             }
@@ -118,7 +119,7 @@ final class PubGrubPackageContainer {
         }
 
         for version in versions.dropLast(versions.count - idx).reversed() {
-            let isToolsVersionCompatible = self.underlying.isToolsVersionCompatible(at: version)
+            let isToolsVersionCompatible = await self.underlying.isToolsVersionCompatible(at: version)
             if isToolsVersionCompatible {
                 break
             }
@@ -153,11 +154,11 @@ final class PubGrubPackageContainer {
         node: DependencyResolutionNode,
         overriddenPackages: [PackageReference: (version: BoundVersion, products: ProductFilter)],
         root: DependencyResolutionNode
-    ) throws -> [Incompatibility] {
+    ) async throws -> [Incompatibility] {
         // FIXME: It would be nice to compute bounds for this as well.
-        if !self.underlying.isToolsVersionCompatible(at: version) {
-            let requirement = try self.computeIncompatibleToolsVersionBounds(fromVersion: version)
-            let toolsVersion = try self.underlying.toolsVersion(for: version)
+        if await !self.underlying.isToolsVersionCompatible(at: version) {
+            let requirement = try await self.computeIncompatibleToolsVersionBounds(fromVersion: version)
+            let toolsVersion = try await self.underlying.toolsVersion(for: version)
             return try [Incompatibility(
                 Term(node, requirement),
                 root: root,
@@ -165,7 +166,7 @@ final class PubGrubPackageContainer {
             )]
         }
 
-        var unprocessedDependencies = try self.underlying.getDependencies(
+        var unprocessedDependencies = try await self.underlying.getDependencies(
             at: version,
             productFilter: node.productFilter
         )

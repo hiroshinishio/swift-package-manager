@@ -428,7 +428,7 @@ public struct PubGrubDependencyResolver {
             }
 
             for node in constraint.nodes() {
-                var unprocessedDependencies = try container.underlying.getDependencies(
+                var unprocessedDependencies = try await container.underlying.getDependencies(
                     at: revisionForDependencies,
                     productFilter: constraint.products
                 )
@@ -768,56 +768,58 @@ public struct PubGrubDependencyResolver {
         // Prefer packages with least number of versions that fit the current requirements so we
         // get conflicts (if any) sooner.
         self.computeCounts(for: undecided) { result in
-            do {
-                let start = DispatchTime.now()
-                let counts = try result.get()
-                // forced unwraps safe since we are testing for count and errors above
-                let pkgTerm = undecided.min { counts[$0]! < counts[$1]! }!
-                self.delegate?.willResolve(term: pkgTerm)
-                // at this point the container is cached
-                let container = try self.provider.getCachedContainer(for: pkgTerm.node.package)
+            Task {
+                do {
+                    let start = DispatchTime.now()
+                    let counts = try result.get()
+                    // forced unwraps safe since we are testing for count and errors above
+                    let pkgTerm = undecided.min { counts[$0]! < counts[$1]! }!
+                    self.delegate?.willResolve(term: pkgTerm)
+                    // at this point the container is cached
+                    let container = try self.provider.getCachedContainer(for: pkgTerm.node.package)
 
-                // Get the best available version for this package.
-                guard let version = try container.getBestAvailableVersion(for: pkgTerm) else {
-                    try state.addIncompatibility(
-                        Incompatibility(pkgTerm, root: state.root, cause: .noAvailableVersion),
-                        at: .decisionMaking
-                    )
-                    return completion(.success(pkgTerm.node))
-                }
-
-                // Add all of this version's dependencies as incompatibilities.
-                let depIncompatibilities = try container.incompatibilites(
-                    at: version,
-                    node: pkgTerm.node,
-                    overriddenPackages: state.overriddenPackages,
-                    root: state.root
-                )
-
-                var haveConflict = false
-                for incompatibility in depIncompatibilities {
-                    // Add the incompatibility to our partial solution.
-                    state.addIncompatibility(incompatibility, at: .decisionMaking)
-
-                    // Check if this incompatibility will satisfy the solution.
-                    haveConflict = haveConflict || incompatibility.terms.allSatisfy {
-                        // We only need to check if the terms other than this package
-                        // are satisfied because we _know_ that the terms matching
-                        // this package will be satisfied if we make this version
-                        // as a decision.
-                        $0.node == pkgTerm.node || state.solution.satisfies($0)
+                    // Get the best available version for this package.
+                    guard let version = try container.getBestAvailableVersion(for: pkgTerm) else {
+                        try state.addIncompatibility(
+                            Incompatibility(pkgTerm, root: state.root, cause: .noAvailableVersion),
+                            at: .decisionMaking
+                        )
+                        return completion(.success(pkgTerm.node))
                     }
-                }
 
-                // Decide this version if there was no conflict with its dependencies.
-                if !haveConflict {
-                    self.delegate?.didResolve(term: pkgTerm, version: version, duration: start.distance(to: .now()))
-                    state.decide(pkgTerm.node, at: version)
-                }
+                    // Add all of this version's dependencies as incompatibilities.
+                    let depIncompatibilities = try await container.incompatibilites(
+                        at: version,
+                        node: pkgTerm.node,
+                        overriddenPackages: state.overriddenPackages,
+                        root: state.root
+                    )
 
-                completion(.success(pkgTerm.node))
-            } catch {
-                completion(.failure(error))
+                    var haveConflict = false
+                    for incompatibility in depIncompatibilities {
+                        // Add the incompatibility to our partial solution.
+                        state.addIncompatibility(incompatibility, at: .decisionMaking)
+
+                        // Check if this incompatibility will satisfy the solution.
+                        haveConflict = haveConflict || incompatibility.terms.allSatisfy {
+                            // We only need to check if the terms other than this package
+                            // are satisfied because we _know_ that the terms matching
+                            // this package will be satisfied if we make this version
+                            // as a decision.
+                            $0.node == pkgTerm.node || state.solution.satisfies($0)
+                        }
+                    }
+
+                    // Decide this version if there was no conflict with its dependencies.
+                    if !haveConflict {
+                        self.delegate?.didResolve(term: pkgTerm, version: version, duration: start.distance(to: .now()))
+                        state.decide(pkgTerm.node, at: version)
+                    }
+
+                    completion(.success(pkgTerm.node))
+                } catch {
+                    completion(.failure(error))
+                }
             }
         }
     }

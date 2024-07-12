@@ -1813,16 +1813,17 @@ final class PubgrubTests: XCTestCase {
             identity: .init(path: dependencyBLocation),
             path: dependencyBLocation
         )
-        XCTAssertEqual(
-            try container.incompatibilites(
-                at: Version(1, 0, 0),
-                node: .product(
-                    "FilterA",
-                    package: other
-                ),
-                overriddenPackages: [:],
-                root: .root(package: root)
+        let result = try await container.incompatibilites(
+            at: Version(1, 0, 0),
+            node: .product(
+                "FilterA",
+                package: other
             ),
+            overriddenPackages: [:],
+            root: .root(package: root)
+        )
+        XCTAssertEqual(
+            result,
             [
                 Incompatibility(
                     terms: [
@@ -1852,16 +1853,17 @@ final class PubgrubTests: XCTestCase {
                 ),
             ]
         )
-        XCTAssertEqual(
-            try container.incompatibilites(
-                at: Version(1, 0, 0),
-                node: .product(
-                    "FilterB",
-                    package: other
-                ),
-                overriddenPackages: [:],
-                root: .root(package: root)
+        let result2 = try await container.incompatibilites(
+            at: Version(1, 0, 0),
+            node: .product(
+                "FilterB",
+                package: other
             ),
+            overriddenPackages: [:],
+            root: .root(package: root)
+        )
+        XCTAssertEqual(
+            result2,
             [
                 Incompatibility(
                     terms: [
