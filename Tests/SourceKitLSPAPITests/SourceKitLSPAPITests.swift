@@ -22,7 +22,7 @@ import _InternalTestSupport
 import XCTest
 
 final class SourceKitLSPAPITests: XCTestCase {
-    func testBasicSwiftPackage() throws {
+    func testBasicSwiftPackage() async throws {
         let fs = InMemoryFileSystem(emptyFiles:
             "/Pkg/Sources/exe/main.swift",
             "/Pkg/Sources/lib/lib.swift"
@@ -44,7 +44,7 @@ final class SourceKitLSPAPITests: XCTestCase {
         )
         XCTAssertNoDiagnostics(observability.diagnostics)
 
-        let plan = try BuildPlan(
+        let plan = try await BuildPlan(
             destinationBuildParameters: mockBuildParameters(
                 destination: .target,
                 shouldLinkStaticSwiftStdlib: true

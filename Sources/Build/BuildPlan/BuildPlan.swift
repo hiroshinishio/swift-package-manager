@@ -250,8 +250,8 @@ public class BuildPlan: SPMBuildCore.BuildPlan {
         graph: ModulesGraph,
         fileSystem: any FileSystem,
         observabilityScope: ObservabilityScope
-    ) throws {
-        try self.init(
+    ) async throws {
+        try await self.init(
             destinationBuildParameters: productsBuildParameters,
             toolsBuildParameters: toolsBuildParameters,
             graph: graph,
@@ -274,7 +274,7 @@ public class BuildPlan: SPMBuildCore.BuildPlan {
         disableSandbox: Bool = false,
         fileSystem: any FileSystem,
         observabilityScope: ObservabilityScope
-    ) throws {
+    ) async throws {
         self.destinationBuildParameters = destinationBuildParameters
         self.toolsBuildParameters = toolsBuildParameters
         self.graph = graph
@@ -360,7 +360,7 @@ public class BuildPlan: SPMBuildCore.BuildPlan {
             let toolsVersion = graph.package(for: target)?.manifest.toolsVersion ?? .v5_5
 
             if let pluginConfiguration, !buildParameters.shouldSkipBuilding {
-                let pluginInvocationResults = try Self.invokeBuildToolPlugins(
+                let pluginInvocationResults = try await Self.invokeBuildToolPlugins(
                     for: target,
                     configuration: pluginConfiguration,
                     buildParameters: toolsBuildParameters,
@@ -751,7 +751,7 @@ extension BuildPlan {
         fileSystem: any FileSystem,
         observabilityScope: ObservabilityScope,
         surfaceDiagnostics: Bool = false
-    ) throws -> [BuildToolPluginInvocationResult] {
+    ) async throws -> [BuildToolPluginInvocationResult] {
         let outputDir = configuration.workDirectory.appending("outputs")
 
         /// Determine the package that contains the target.
@@ -813,7 +813,7 @@ extension BuildPlan {
                 pluginDerivedResources = []
             }
 
-            let result = try temp_await {
+            let result = try await withCheckedThrowingContinuation {
                 pluginModule.invoke(
                     module: plugin,
                     action: .createBuildToolCommands(
@@ -836,7 +836,7 @@ extension BuildPlan {
                     fileSystem: fileSystem,
                     modulesGraph: modulesGraph,
                     observabilityScope: observabilityScope,
-                    completion: $0
+                    completion: $0.resume(with:)
                 )
             }
 

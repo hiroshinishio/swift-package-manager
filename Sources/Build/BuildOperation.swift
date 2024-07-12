@@ -186,7 +186,9 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
     }
 
     public var builtTestProducts: [BuiltTestProduct] {
-        (try? getBuildDescription())?.builtTestProducts ?? []
+        get async {
+            (try? await getBuildDescription())?.builtTestProducts ?? []
+        }
     }
 
     /// File rules to determine resource handling behavior.
@@ -291,8 +293,8 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
     ///
     /// This will try skip build planning if build manifest caching is enabled
     /// and the package structure hasn't changed.
-    public func getBuildDescription(subset: BuildSubset? = nil) throws -> BuildDescription {
-        return try self.buildDescription.memoize {
+    public func getBuildDescription(subset: BuildSubset? = nil) async throws -> BuildDescription {
+        return try await self.buildDescription.memoize {
             if self.cacheBuildManifest {
                 do {
                     // if buildPackageStructure returns a valid description we use that, otherwise we perform full planning
@@ -321,12 +323,12 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
                 }
             }
             // We need to perform actual planning if we reach here.
-            return try self.plan(subset: subset).description
+            return try await self.plan(subset: subset).description
         }
     }
 
-    public func getBuildManifest() throws -> LLBuildManifest {
-        return try self.plan().manifest
+    public func getBuildManifest() async throws -> LLBuildManifest {
+        try await self.plan().manifest
     }
 
     /// Cancel the active build operation.
@@ -486,7 +488,9 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
         // Get the build description (either a cached one or newly created).
 
         // Get the build description
-        let buildDescription = try getBuildDescription(subset: subset)
+        let buildDescription = try unsafe_await {
+            try await self.getBuildDescription(subset: subset)
+        }
 
         // Verify dependency imports on the described targets
         try verifyTargetImports(in: buildDescription)
@@ -501,7 +505,7 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
         // If any plugins are part of the build set, compile them now to surface
         // any errors up-front. Returns true if we should proceed with the build
         // or false if not. It will already have thrown any appropriate error.
-        guard try self.compilePlugins(in: subset) else {
+        guard try unsafe_await({ try await self.compilePlugins(in: subset) }) else {
             return
         }
 
@@ -567,10 +571,10 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
     /// true if the build should proceed. Throws an error in case of failure. A
     /// reason why the build might not proceed even on success is if only plugins
     /// should be compiled.
-    func compilePlugins(in subset: BuildSubset) throws -> Bool {
+    func compilePlugins(in subset: BuildSubset) async throws -> Bool {
         // Figure out what, if any, plugin descriptions to compile, and whether
         // to continue building after that based on the subset.
-        let allPlugins = try getBuildDescription().pluginDescriptions
+        let allPlugins = try await getBuildDescription().pluginDescriptions
         let pluginsToCompile: [PluginBuildDescription]
         let continueBuilding: Bool
         switch subset {
@@ -588,7 +592,7 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
         // Compile any plugins we ended up with. If any of them fails, it will
         // throw.
         for plugin in pluginsToCompile {
-            try compilePlugin(plugin)
+            try await compilePlugin(plugin)
         }
 
         // If we get this far they all succeeded. Return whether to continue the
@@ -598,7 +602,7 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
 
     // Compiles a single plugin, emitting its output and throwing an error if it
     // fails.
-    func compilePlugin(_ plugin: PluginBuildDescription) throws {
+    func compilePlugin(_ plugin: PluginBuildDescription) async throws {
         guard let pluginConfiguration else {
             throw InternalError("unknown plugin script runner")
         }
@@ -645,7 +649,7 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
             preparationStepName: "Compiling plugin \(plugin.moduleName)",
             progressTracker: self.current?.tracker
         )
-        let result = try temp_await {
+        let result = try await withCheckedThrowingContinuation {
             pluginConfiguration.scriptRunner.compilePluginScript(
                 sourceFiles: plugin.sources.paths,
                 pluginName: plugin.moduleName,
@@ -653,7 +657,7 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
                 observabilityScope: self.observabilityScope,
                 callbackQueue: DispatchQueue.sharedConcurrent,
                 delegate: delegate,
-                completion: $0)
+                completion: $0.resume(with:))
         }
 
         // Throw an error on failure; we will already have emitted the compiler's output in this case.
@@ -732,7 +736,7 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
     }
 
     /// Create the build plan and return the build description.
-    private func plan(subset: BuildSubset? = nil) throws -> (description: BuildDescription, manifest: LLBuildManifest) {
+    private func plan(subset: BuildSubset? = nil) async throws -> (description: BuildDescription, manifest: LLBuildManifest) {
         // Load the package graph.
         let graph = try getPackageGraph()
 
@@ -746,7 +750,7 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
                 satisfying: self.config.buildEnvironment(for: .host)
             )
 
-            pluginTools = try buildPluginTools(
+            pluginTools = try await buildPluginTools(
                 graph: graph,
                 pluginsPerModule: pluginsPerModule,
                 hostTriple: try pluginConfiguration.scriptRunner.hostTriple
@@ -756,7 +760,7 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
         }
 
         // Create the build plan based on the modules graph and any information from plugins.
-        let plan = try BuildPlan(
+        let plan = try await BuildPlan(
             destinationBuildParameters: self.config.destinationBuildParameters,
             toolsBuildParameters: self.config.buildParameters(for: .host),
             graph: graph,
@@ -925,9 +929,9 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
         return nil
     }
 
-    public func packageStructureChanged() -> Bool {
+    public func packageStructureChanged() async -> Bool {
         do {
-            _ = try self.plan()
+            _ = try await self.plan()
         }
         catch Diagnostics.fatalError {
             return false
@@ -966,7 +970,7 @@ extension BuildOperation {
         graph: ModulesGraph,
         pluginsPerModule: [ResolvedModule.ID: [ResolvedModule]],
         hostTriple: Basics.Triple
-    ) throws -> [ResolvedModule.ID: [String: PluginTool]] {
+    ) async throws -> [ResolvedModule.ID: [String: PluginTool]] {
         var accessibleToolsPerPlugin: [ResolvedModule.ID: [String: PluginTool]] = [:]
 
         var config = self.config
@@ -984,7 +988,7 @@ extension BuildOperation {
             component: "plugin-tools-description.json"
         )
 
-        let buildPlan = try BuildPlan(
+        let buildPlan = try await BuildPlan(
             destinationBuildParameters: config.destinationBuildParameters,
             toolsBuildParameters: config.toolsBuildParameters,
             graph: graph,
