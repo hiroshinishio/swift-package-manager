@@ -93,12 +93,12 @@ public extension PackageSigningEntityStorage {
         observabilityScope: ObservabilityScope,
         callbackQueue: DispatchQueue
     ) async throws -> PackageSigners {
-        try await safe_async {
+        try await withCheckedThrowingContinuation {
             self.get(
                 package: package,
                 observabilityScope: observabilityScope, 
                 callbackQueue: callbackQueue,
-                callback: $0
+                callback: $0.resume(with:)
             )
         }
     }
@@ -111,7 +111,7 @@ public extension PackageSigningEntityStorage {
         observabilityScope: ObservabilityScope,
         callbackQueue: DispatchQueue
     ) async throws {
-        try await safe_async {
+        try await withCheckedThrowingContinuation {
             self.put(
                 package: package,
                 version: version,
@@ -119,7 +119,7 @@ public extension PackageSigningEntityStorage {
                 origin: origin,
                 observabilityScope: observabilityScope,
                 callbackQueue: callbackQueue,
-                callback: $0
+                callback: $0.resume(with:)
             )
         }
     }
@@ -132,7 +132,7 @@ public extension PackageSigningEntityStorage {
         observabilityScope: ObservabilityScope,
         callbackQueue: DispatchQueue
     ) async throws {
-        try await safe_async {
+        try await withCheckedThrowingContinuation {
             self.add(
                 package: package,
                 version: version,
@@ -140,7 +140,7 @@ public extension PackageSigningEntityStorage {
                 origin: origin,
                 observabilityScope: observabilityScope,
                 callbackQueue: callbackQueue,
-                callback: $0
+                callback: $0.resume(with:)
             )
         }
     }
@@ -153,7 +153,7 @@ public extension PackageSigningEntityStorage {
         observabilityScope: ObservabilityScope,
         callbackQueue: DispatchQueue
     ) async throws {
-        try await safe_async {
+        try await withCheckedThrowingContinuation {
             self.changeSigningEntityFromVersion(
                 package: package,
                 version: version,
@@ -161,7 +161,7 @@ public extension PackageSigningEntityStorage {
                 origin: origin,
                 observabilityScope: observabilityScope,
                 callbackQueue: callbackQueue,
-                callback: $0
+                callback: $0.resume(with:)
             )
         }
     }
@@ -174,7 +174,7 @@ public extension PackageSigningEntityStorage {
         observabilityScope: ObservabilityScope,
         callbackQueue: DispatchQueue
     ) async throws {
-        try await safe_async {
+        try await withCheckedThrowingContinuation {
             self.changeSigningEntityForAllVersions(
                 package: package,
                 version: version,
@@ -182,7 +182,7 @@ public extension PackageSigningEntityStorage {
                 origin: origin,
                 observabilityScope: observabilityScope,
                 callbackQueue: callbackQueue,
-                callback: $0
+                callback: $0.resume(with:)
             )
         }
     }

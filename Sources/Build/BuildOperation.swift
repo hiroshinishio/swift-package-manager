@@ -280,6 +280,7 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
         self.rootPackageIdentityByTargetName = (try? Dictionary<String, PackageIdentity>(throwingUniqueKeysWithValues: targetsByRootPackageIdentity.lazy.flatMap { e in e.value.map { ($0, e.key) } })) ?? [:]
     }
 
+    @available(*, noasync, message: "This must only be called from a dispatch queue")
     public func getPackageGraph() throws -> ModulesGraph {
         try self.packageGraph.memoize {
             try self.packageGraphLoader()

@@ -156,7 +156,7 @@ internal final class SourceControlPackageContainer: PackageContainer, CustomStri
         return try? self.knownVersions()[version]
     }
 
-    func checkIntegrity(version: Version, revision: Revision) throws {
+    func checkIntegrity(version: Version, revision: Revision) async throws {
         guard let fingerprintStorage else {
             return
         }
@@ -167,7 +167,7 @@ internal final class SourceControlPackageContainer: PackageContainer, CustomStri
 
         let fingerprint: Fingerprint
         do {
-            fingerprint = try temp_await {
+            fingerprint = try await withCheckedThrowingContinuation {
                 fingerprintStorage.get(
                     package: self.package,
                     version: version,
@@ -175,7 +175,7 @@ internal final class SourceControlPackageContainer: PackageContainer, CustomStri
                     contentType: .sourceCode,
                     observabilityScope: self.observabilityScope,
                     callbackQueue: .sharedConcurrent,
-                    callback: $0
+                    callback: $0.resume(with:)
                 )
             }
         } catch PackageFingerprintStorageError.notFound {
@@ -186,14 +186,14 @@ internal final class SourceControlPackageContainer: PackageContainer, CustomStri
             )
             // Write to storage if fingerprint not yet recorded
             do {
-                try temp_await {
+                try await withCheckedThrowingContinuation {
                     fingerprintStorage.put(
                         package: self.package,
                         version: version,
                         fingerprint: fingerprint,
                         observabilityScope: self.observabilityScope,
                         callbackQueue: .sharedConcurrent,
-                        callback: $0
+                        callback: $0.resume(with:)
                     )
                 }
             } catch PackageFingerprintStorageError.conflict(_, let existing) {
