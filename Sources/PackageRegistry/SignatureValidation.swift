@@ -576,6 +576,22 @@ struct SignatureValidation {
         signature: [UInt8],
         signatureFormat: SignatureFormat,
         configuration: RegistryConfiguration.Security.Signing,
+        fileSystem: FileSystem
+    ) async throws ->  SigningEntity? {
+        try await withCheckedThrowingContinuation {
+            SignatureValidation.extractSigningEntity(
+                signature: signature,
+                signatureFormat: signatureFormat,
+                configuration: configuration,
+                fileSystem: fileSystem,
+                completion: $0.resume(with:)
+            )
+        }
+    }
+    static func extractSigningEntity(
+        signature: [UInt8],
+        signatureFormat: SignatureFormat,
+        configuration: RegistryConfiguration.Security.Signing,
         fileSystem: FileSystem,
         completion: @escaping @Sendable (Result<SigningEntity?, Error>) -> Void
     ) {
@@ -587,9 +603,9 @@ struct SignatureValidation {
                     format: signatureFormat,
                     verifierConfiguration: verifierConfiguration
                 )
-                return completion(.success(signingEntity))
+                completion(.success(signingEntity))
             } catch {
-                return completion(.failure(error))
+                completion(.failure(error))
             }
         }
     }
