@@ -144,7 +144,7 @@ public struct SwiftBuildCommand: AsyncSwiftCommand {
 
         if options.printManifestGraphviz {
             // FIXME: Doesn't seem ideal that we need an explicit build operation, but this concretely uses the `LLBuildManifest`.
-            guard let buildOperation = try swiftCommandState.createBuildSystem(
+            guard let buildOperation = try await swiftCommandState.createBuildSystem(
                 explicitBuildSystem: .native,
                 traitConfiguration: .init(traitOptions: self.options.traits)
             ) as? BuildOperation else {
@@ -190,10 +190,10 @@ public struct SwiftBuildCommand: AsyncSwiftCommand {
             for library in try await options.testLibraryOptions.enabledTestingLibraries(swiftCommandState: swiftCommandState) {
                 updateTestingParameters(of: &productsBuildParameters, library: library)
                 updateTestingParameters(of: &toolsBuildParameters, library: library)
-                try build(swiftCommandState, subset: subset, productsBuildParameters: productsBuildParameters, toolsBuildParameters: toolsBuildParameters)
+                try await build(swiftCommandState, subset: subset, productsBuildParameters: productsBuildParameters, toolsBuildParameters: toolsBuildParameters)
             }
         } else {
-            try build(swiftCommandState, subset: subset, productsBuildParameters: productsBuildParameters, toolsBuildParameters: toolsBuildParameters)
+            try await build(swiftCommandState, subset: subset, productsBuildParameters: productsBuildParameters, toolsBuildParameters: toolsBuildParameters)
         }
     }
 
@@ -202,8 +202,8 @@ public struct SwiftBuildCommand: AsyncSwiftCommand {
         subset: BuildSubset,
         productsBuildParameters: BuildParameters,
         toolsBuildParameters: BuildParameters
-    ) throws {
-        let buildSystem = try swiftCommandState.createBuildSystem(
+    ) async throws {
+        let buildSystem = try await swiftCommandState.createBuildSystem(
             explicitProduct: options.product,
             traitConfiguration: .init(traitOptions: self.options.traits),
             shouldLinkStaticSwiftStdlib: options.shouldLinkStaticSwiftStdlib,

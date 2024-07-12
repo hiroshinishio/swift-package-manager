@@ -569,7 +569,7 @@ public struct SwiftTestCommand: AsyncSwiftCommand {
         library: BuildParameters.Testing.Library
     ) async throws -> [BuiltTestProduct] {
         let (productsBuildParameters, toolsBuildParameters) = try await swiftCommandState.buildParametersForTest(options: self.options, library: library)
-        return try Commands.buildTestsIfNeeded(
+        return try await Commands.buildTestsIfNeeded(
             swiftCommandState: swiftCommandState,
             productsBuildParameters: productsBuildParameters,
             toolsBuildParameters: toolsBuildParameters,
@@ -665,13 +665,13 @@ extension SwiftTestCommand {
 
         // MARK: - XCTest
 
-        private func xctestRun(_ swiftCommandState: SwiftCommandState) throws {
+        private func xctestRun(_ swiftCommandState: SwiftCommandState) async throws {
           let (productsBuildParameters, toolsBuildParameters) = try swiftCommandState.buildParametersForTest(
                 enableCodeCoverage: false,
                 shouldSkipBuilding: sharedOptions.shouldSkipBuilding,
                 library: .xctest
             )
-            let testProducts = try buildTestsIfNeeded(
+            let testProducts = try await buildTestsIfNeeded(
                 swiftCommandState: swiftCommandState,
                 productsBuildParameters: productsBuildParameters,
                 toolsBuildParameters: toolsBuildParameters
@@ -693,13 +693,13 @@ extension SwiftTestCommand {
 
         // MARK: - swift-testing
 
-        private func swiftTestingRun(_ swiftCommandState: SwiftCommandState) throws {
+        private func swiftTestingRun(_ swiftCommandState: SwiftCommandState) async throws {
             let (productsBuildParameters, toolsBuildParameters) = try swiftCommandState.buildParametersForTest(
                 enableCodeCoverage: false,
                 shouldSkipBuilding: sharedOptions.shouldSkipBuilding,
                 library: .swiftTesting
             )
-            let testProducts = try buildTestsIfNeeded(
+            let testProducts = try await buildTestsIfNeeded(
                 swiftCommandState: swiftCommandState,
                 productsBuildParameters: productsBuildParameters,
                 toolsBuildParameters: toolsBuildParameters
@@ -739,10 +739,10 @@ extension SwiftTestCommand {
 
         func run(_ swiftCommandState: SwiftCommandState) async throws {
             if try await testLibraryOptions.enableSwiftTestingLibrarySupport(swiftCommandState: swiftCommandState) {
-                try swiftTestingRun(swiftCommandState)
+                try await swiftTestingRun(swiftCommandState)
             }
             if testLibraryOptions.enableXCTestSupport {
-                try xctestRun(swiftCommandState)
+                try await xctestRun(swiftCommandState)
             }
         }
 
@@ -750,8 +750,8 @@ extension SwiftTestCommand {
             swiftCommandState: SwiftCommandState,
             productsBuildParameters: BuildParameters,
             toolsBuildParameters: BuildParameters
-        ) throws -> [BuiltTestProduct] {
-            return try Commands.buildTestsIfNeeded(
+        ) async throws -> [BuiltTestProduct] {
+            return try await Commands.buildTestsIfNeeded(
                 swiftCommandState: swiftCommandState,
                 productsBuildParameters: productsBuildParameters,
                 toolsBuildParameters: toolsBuildParameters,
@@ -1383,8 +1383,8 @@ private func buildTestsIfNeeded(
     toolsBuildParameters: BuildParameters,
     testProduct: String?,
     traitConfiguration: TraitConfiguration
-) throws -> [BuiltTestProduct] {
-    let buildSystem = try swiftCommandState.createBuildSystem(
+) async throws -> [BuiltTestProduct] {
+    let buildSystem = try await swiftCommandState.createBuildSystem(
         traitConfiguration: traitConfiguration,
         productsBuildParameters: productsBuildParameters,
         toolsBuildParameters: toolsBuildParameters

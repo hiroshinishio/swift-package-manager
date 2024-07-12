@@ -81,7 +81,7 @@ extension SwiftPackageCommand {
                 throw StringError("\(productToInstall.name) is already installed at \(existingPkg.path)")
             }
 
-            try tool.createBuildSystem(explicitProduct: productToInstall.name, traitConfiguration: .init())
+            try await tool.createBuildSystem(explicitProduct: productToInstall.name, traitConfiguration: .init())
                 .build(subset: .product(productToInstall.name))
 
             let binPath = try tool.productsBuildParameters.buildPath.appending(component: productToInstall.name)
