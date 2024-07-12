@@ -613,11 +613,11 @@ extension SwiftTestCommand {
     func printCodeCovPath(_ swiftCommandState: SwiftCommandState) async throws {
         let workspace = try swiftCommandState.getActiveWorkspace()
         let root = try swiftCommandState.getWorkspaceRoot()
-        let rootManifests = try await safe_async {
+        let rootManifests = try await withCheckedThrowingContinuation {
             workspace.loadRootManifests(
                 packages: root.packages,
                 observabilityScope: swiftCommandState.observabilityScope,
-                completion: $0
+                completion: $0.resume(with: )
             )
         }
         guard let rootManifest = rootManifests.values.first else {
