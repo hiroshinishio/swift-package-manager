@@ -25,22 +25,6 @@ public enum Concurrency {
 }
 
 @available(*, noasync, message: "This method blocks the current thread indefinitely. Calling it from the concurrency pool can cause deadlocks")
-public func unsafe_await<T>(_ body: @Sendable @escaping () async throws -> T) throws -> T {
-    let semaphore = DispatchSemaphore(value: 0)
-    nonisolated(unsafe) var result: Result<T, Error>?
-    Task {
-        do {
-            result = try await .success(body())
-        } catch {
-            result = .failure(error)
-        }
-        semaphore.signal()
-    }
-    semaphore.wait()
-    return try result!.get()
-}
-
-@available(*, noasync, message: "This method blocks the current thread indefinitely. Calling it from the concurrency pool can cause deadlocks")
 public func unsafe_await<T>(_ body: @Sendable @escaping () async -> T) -> T {
     let semaphore = DispatchSemaphore(value: 0)
     nonisolated(unsafe) var result: T?

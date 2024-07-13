@@ -94,8 +94,8 @@ public class RegistryPackageContainer: PackageContainer {
         }
     }
 
-    public func versionsAscending() throws -> [Version] {
-        try self.versionsDescending().reversed()
+    public func versionsAscending() async throws -> [Version] {
+        try await self.versionsDescending().reversed()
     }
 
     public func toolsVersionsAppropriateVersionsDescending() async throws -> [Version] {

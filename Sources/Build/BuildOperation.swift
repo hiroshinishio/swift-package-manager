@@ -144,7 +144,7 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
     private let config: LLBuildSystemConfiguration
 
     /// The closure for loading the package graph.
-    let packageGraphLoader: () throws -> ModulesGraph
+    let packageGraphLoader: () async throws -> ModulesGraph
 
     /// the plugin configuration for build plugins
     let pluginConfiguration: PluginConfiguration?
@@ -242,7 +242,7 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
         productsBuildParameters: BuildParameters,
         toolsBuildParameters: BuildParameters,
         cacheBuildManifest: Bool,
-        packageGraphLoader: @escaping () throws -> ModulesGraph,
+        packageGraphLoader: @escaping () async throws -> ModulesGraph,
         pluginConfiguration: PluginConfiguration? = .none,
         scratchDirectory: AbsolutePath,
         traitConfiguration: TraitConfiguration?,
@@ -282,10 +282,9 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
         self.rootPackageIdentityByTargetName = (try? Dictionary<String, PackageIdentity>(throwingUniqueKeysWithValues: targetsByRootPackageIdentity.lazy.flatMap { e in e.value.map { ($0, e.key) } })) ?? [:]
     }
 
-    @available(*, noasync, message: "This must only be called from a dispatch queue")
-    public func getPackageGraph() throws -> ModulesGraph {
-        try self.packageGraph.memoize {
-            try self.packageGraphLoader()
+    public func getPackageGraph() async throws -> ModulesGraph {
+        try await self.packageGraph.memoize {
+            try await self.packageGraphLoader()
         }
     }
 
@@ -478,7 +477,7 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
     }
 
     /// Perform a build using the given build description and subset.
-    public func build(subset: BuildSubset) throws {
+    public func build(subset: BuildSubset) async throws {
         guard !self.config.shouldSkipBuilding(for: .target) else {
             return
         }
@@ -488,9 +487,7 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
         // Get the build description (either a cached one or newly created).
 
         // Get the build description
-        let buildDescription = try unsafe_await {
-            try await self.getBuildDescription(subset: subset)
-        }
+        let buildDescription = try await self.getBuildDescription(subset: subset)
 
         // Verify dependency imports on the described targets
         try verifyTargetImports(in: buildDescription)
@@ -505,7 +502,7 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
         // If any plugins are part of the build set, compile them now to surface
         // any errors up-front. Returns true if we should proceed with the build
         // or false if not. It will already have thrown any appropriate error.
-        guard try unsafe_await({ try await self.compilePlugins(in: subset) }) else {
+        guard try await self.compilePlugins(in: subset) else {
             return
         }
 
@@ -514,7 +511,7 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
         progressTracker.buildStart(configuration: configuration)
 
         // Perform the build.
-        let llbuildTarget = try computeLLBuildTargetName(for: subset)
+        let llbuildTarget = try await computeLLBuildTargetName(for: subset)
         let success = buildSystem.build(target: llbuildTarget)
 
         let duration = buildStartTime.distance(to: .now())
@@ -667,7 +664,7 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
     }
 
     /// Compute the llbuild target name using the given subset.
-    func computeLLBuildTargetName(for subset: BuildSubset) throws -> String {
+    func computeLLBuildTargetName(for subset: BuildSubset) async throws -> String {
         switch subset {
         case .allExcludingTests:
             return LLBuildManifestBuilder.TargetKind.main.targetName
@@ -675,7 +672,7 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
             return LLBuildManifestBuilder.TargetKind.test.targetName
         case .product(let productName, let destination):
             // FIXME: This is super unfortunate that we might need to load the package graph.
-            let graph = try getPackageGraph()
+            let graph = try await getPackageGraph()
 
             let buildTriple: BuildTriple? = if let destination {
                 destination == .host ? .tools : .destination
@@ -709,7 +706,7 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
             return try product.getLLBuildTargetName(buildParameters: buildParameters)
         case .target(let targetName, let destination):
             // FIXME: This is super unfortunate that we might need to load the package graph.
-            let graph = try getPackageGraph()
+            let graph = try await getPackageGraph()
 
             let buildTriple: BuildTriple? = if let destination {
                 destination == .host ? .tools : .destination
@@ -738,7 +735,7 @@ public final class BuildOperation: PackageStructureDelegate, SPMBuildCore.BuildS
     /// Create the build plan and return the build description.
     private func plan(subset: BuildSubset? = nil) async throws -> (description: BuildDescription, manifest: LLBuildManifest) {
         // Load the package graph.
-        let graph = try getPackageGraph()
+        let graph = try await getPackageGraph()
 
         let pluginTools: [ResolvedModule.ID: [String: PluginTool]]
         // FIXME: This is unfortunate but we need to build plugin tools upfront at the moment because
@@ -1009,8 +1006,8 @@ extension BuildOperation {
             config: config
         )
 
-        func buildToolBuilder(_ name: String, _ path: RelativePath) throws -> AbsolutePath? {
-            let llbuildTarget = try self.computeLLBuildTargetName(for: .product(name, for: .host))
+        func buildToolBuilder(_ name: String, _ path: RelativePath) async throws -> AbsolutePath? {
+            let llbuildTarget = try await self.computeLLBuildTargetName(for: .product(name, for: .host))
             let success = buildSystem.build(target: llbuildTarget)
 
             if !success {
@@ -1026,12 +1023,12 @@ extension BuildOperation {
             for plugin in plugins where accessibleToolsPerPlugin[plugin.id] == nil {
                 // Determine the tools to which this plugin has access, and create a name-to-path mapping from tool
                 // names to the corresponding paths. Built tools are assumed to be in the build tools directory.
-                let accessibleTools = try plugin.preparePluginTools(
+                let accessibleTools = try await plugin.preparePluginTools(
                     fileSystem: fileSystem,
                     environment: config.buildEnvironment(for: .host),
                     for: hostTriple
                 ) { name, path in
-                    if let result = try buildToolBuilder(name, path) {
+                    if let result = try await buildToolBuilder(name, path) {
                         return result
                     } else {
                         return config.buildPath(for: .host).appending(path)

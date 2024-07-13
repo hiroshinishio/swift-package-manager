@@ -57,11 +57,11 @@ public protocol PackageContainer {
 
     /// Get the list of versions in the repository sorted in the ascending order, that is the earliest
     /// version appears first.
-    func versionsAscending() throws -> [Version]
+    func versionsAscending() async throws -> [Version]
 
     /// Get the list of versions in the repository sorted in the descending order, that is the latest
     /// version appears first.
-    func versionsDescending() throws -> [Version]
+    func versionsDescending() async throws -> [Version]
 
     // FIXME: We should perhaps define some particularly useful error codes
     // here, so the resolver can handle errors more meaningfully.
@@ -99,12 +99,12 @@ public protocol PackageContainer {
 }
 
 extension PackageContainer {
-    public func reversedVersions() throws -> [Version] {
-        try self.versionsDescending()
+    public func reversedVersions() async throws -> [Version] {
+        try await self.versionsDescending()
     }
 
-    public func versionsDescending() throws -> [Version] {
-        try self.versionsAscending().reversed()
+    public func versionsDescending() async throws -> [Version] {
+        try await self.versionsAscending().reversed()
     }
 
     public var shouldInvalidatePinnedVersions: Bool {

@@ -145,31 +145,34 @@ struct APIDigesterBaselineDumper {
             toolsBuildParameters: toolsBuildParameters,
             packageGraphLoader: { graph }
         )
-        try buildSystem.build()
+        try await buildSystem.build()
 
         // Dump the SDK JSON.
         try swiftCommandState.fileSystem.createDirectory(baselineDir, recursive: true)
-        let group = DispatchGroup()
-        let semaphore = DispatchSemaphore(value: Int(productsBuildParameters.workers))
-        let errors = ThreadSafeArrayStore<Swift.Error>()
-        for module in modulesToDiff {
-            semaphore.wait()
-            DispatchQueue.sharedConcurrent.async(group: group) {
-                do {
-                    try apiDigesterTool.emitAPIBaseline(
-                        to: baselinePath(module),
-                        for: module,
-                        buildPlan: buildSystem.buildPlan
-                    )
-                } catch {
-                    errors.append(error)
+
+
+        // TODO: Do we need to support worker paramater?
+        let errors = await withTaskGroup(of: Error?.self) { group in
+            for module in modulesToDiff {
+                group.addTask {
+                    do {
+                        try apiDigesterTool.emitAPIBaseline(
+                            to: baselinePath(module),
+                            for: module,
+                            buildPlan: buildSystem.buildPlan
+                        )
+                        return nil
+                    } catch {
+                        return error
+                    }
                 }
-                semaphore.signal()
+            }
+            return await group.compactMap { $0 }.reduce(into: []) {
+                $0.append($1)
             }
         }
-        group.wait()
 
-        for error in errors.get() {
+        for error in errors {
             observabilityScope.emit(error)
         }
         if observabilityScope.errorsReported {

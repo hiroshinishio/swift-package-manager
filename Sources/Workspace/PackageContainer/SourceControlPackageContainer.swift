@@ -137,8 +137,8 @@ internal final class SourceControlPackageContainer: PackageContainer, CustomStri
     }
 
     /// The available version list (in reverse order).
-    public func toolsVersionsAppropriateVersionsDescending() throws -> [Version] {
-        let reversedVersions = try self.versionsDescending()
+    public func toolsVersionsAppropriateVersionsDescending() async throws -> [Version] {
+        let reversedVersions = try await self.versionsDescending()
         return reversedVersions.lazy.filter {
             // If we have the result cached, return that.
             if let result = self.validToolsVersionsCache[$0] {
