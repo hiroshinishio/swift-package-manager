@@ -34,7 +34,9 @@ import struct TSCBasic.OrderedSet
 import enum TSCUtility.Diagnostics
 import struct TSCUtility.Version
 
-SwiftBootstrapBuildTool.main()
+await { () async in
+    await SwiftBootstrapBuildTool.main()
+}()
 
 struct SwiftBootstrapBuildTool: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
