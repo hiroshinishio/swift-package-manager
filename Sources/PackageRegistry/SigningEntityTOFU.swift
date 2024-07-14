@@ -13,6 +13,7 @@
 import Dispatch
 
 import Basics
+import _Concurrency
 import PackageModel
 import PackageSigning
 

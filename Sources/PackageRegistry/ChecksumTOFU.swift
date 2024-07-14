@@ -11,7 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 import Dispatch
-
+import _Concurrency
 import Basics
 import PackageFingerprint
 import PackageModel

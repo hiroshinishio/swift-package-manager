@@ -13,6 +13,7 @@
 import struct Foundation.URL
 
 import Basics
+import _Concurrency
 import Dispatch
 import PackageModel
 

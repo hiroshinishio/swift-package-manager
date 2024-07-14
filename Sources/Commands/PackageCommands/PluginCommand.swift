@@ -12,6 +12,7 @@
 
 import ArgumentParser
 import Basics
+import _Concurrency
 import CoreCommands
 import Dispatch
 

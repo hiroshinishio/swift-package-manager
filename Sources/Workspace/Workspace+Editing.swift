@@ -10,6 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+import _Concurrency
+
 import struct Basics.AbsolutePath
 import class Basics.InMemoryFileSystem
 import class Basics.ObservabilityScope

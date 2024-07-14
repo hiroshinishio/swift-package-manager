@@ -12,6 +12,7 @@
 
 @_spi(SwiftPMInternal)
 import Basics
+import _Concurrency
 import LLBuildManifest
 import PackageGraph
 import PackageLoading

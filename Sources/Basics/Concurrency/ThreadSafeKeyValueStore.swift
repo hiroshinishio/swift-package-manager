@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+import _Concurrency
 import class Foundation.NSLock
 
 /// Thread-safe dictionary with async memoization

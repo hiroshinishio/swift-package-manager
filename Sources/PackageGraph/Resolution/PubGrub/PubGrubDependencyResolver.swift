@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 import Basics
+import _Concurrency
 import Dispatch
 import class Foundation.NSLock
 import OrderedCollections

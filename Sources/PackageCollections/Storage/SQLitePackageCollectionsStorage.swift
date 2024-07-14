@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 import Basics
+import _Concurrency
 import Dispatch
 import struct Foundation.Data
 import class Foundation.JSONDecoder

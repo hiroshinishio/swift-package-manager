@@ -15,6 +15,8 @@ import ArgumentParser
 @_spi(SwiftPMInternal)
 import Basics
 
+import _Concurrency
+
 @_spi(SwiftPMInternal)
 import CoreCommands
 
