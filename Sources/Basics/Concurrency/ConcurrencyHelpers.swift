@@ -27,7 +27,7 @@ public enum Concurrency {
 @available(*, noasync, message: "This method blocks the current thread indefinitely. Calling it from the concurrency pool can cause deadlocks")
 public func unsafe_await<T>(_ body: @Sendable @escaping () async -> T) -> T {
     let semaphore = DispatchSemaphore(value: 0)
-    nonisolated(unsafe) var result: T?
+    var result: T?
     Task {
         result = await body()
         semaphore.signal()
